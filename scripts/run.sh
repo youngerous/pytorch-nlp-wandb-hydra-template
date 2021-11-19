@@ -1,14 +1,15 @@
 #!/bin/sh
 
-EPOCH=10
+EPOCH=1
 BATCH_SIZE=8
-LR=5e-5
-WORKERS=0
+LR='5e-5'
+GPU='dp'
+AMP='True'
 
 python src/main.py\
-    --epoch $EPOCH\
-    --batch-size $BATCH_SIZE\
-    --lr $LR\
-    --workers $WORKERS\
-    --amp\
-    --distributed\
+    epoch=$EPOCH\
+    batch_size_per_gpu=$BATCH_SIZE\
+    lr=$LR\
+    amp=$AMP\
+    +gpu=$GPU\
+

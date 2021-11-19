@@ -1,27 +1,33 @@
-# PyTorch NLP Template🔥
+# PyTorch NLP Template with Hydra & WandB 🔥
 
 PyTorch template for easy use! (actually, for my own😉)
 - This template especially focuses on **BERT-based NLP tasks**, but it can also be customized to any tasks.
 - This template supports **distributed-data-parallel(ddp)** and **automatic-mixed-precision(amp)** training.
 - This template includes a simple BERT classification code.
+- This template includes simple [WandB](https://wandb.ai/site) and [Hydra](https://hydra.cc/) application.
 - This template follows [black](https://github.com/psf/black) code formatting.
 
 ## 1. Structure
 ```sh
-scripts/
-  └─ run.sh
-src/
-  base/
-    ├─ __init__.py
-    └─ base_trainer.py
-  ├─ __init__.py
-  ├─ config.py
-  ├─ loader.py
-  ├─ main.py
-  ├─ trainer.py
-  └─ utils.py
+root/
+├─ docker/
+│  ├─ Dockerfile
+│  ├─ generate_container.sh
+│  └─ generate_image.sh
+├─ scripts/
+│  └─ run.sh
+├─ src/
+│  ├─ base/
+│  │  ├─ __init__.py
+│  │  └─ base_trainer.py
+│  ├─ __init__.py
+│  ├─ config.py
+│  ├─ loader.py
+│  ├─ main.py
+│  ├─ sweep.yaml
+│  ├─ trainer.py
+│  └─ utils.py
 ├─ .gitignore
-├─ Dockerfile
 ├─ LICENSE
 ├─ README.md
 └─ requirements.txt
@@ -31,29 +37,25 @@ src/
 - torch==1.7.1
 - transformers==4.9.1
 - datasets==1.11.0
+- wandb==0.12.6
+- hydra-core==1.1.1
 
-More dependencies are written in [requirements.txt](https://github.com/youngerous/pytorch-nlp-template/blob/main/requirements.txt).
+More dependencies are written in [requirements.txt](https://github.com/youngerous/pytorch-nlp-wandb-hydra-template/blob/main/requirements.txt).
 
 ## 3. Usage
 
 ### 3.1. Set docker environments
-```sh
+```bash
 # Example: generate image 
-$ docker build -t $image_name --build-arg UNAME=$(whoami) --build-arg UID=$(id -u) --build-arg GID=$(id -g) .
+$ bash docker/generate_image.sh --image_name $IMAGE_NAME
 
-# Example: generate container with two gpus
-$ docker run --gpus '"device=0,1"' -td --ipc=host --name $container_name -v ~/repo:/repo -v /hdd/data/:/hdd/data/ -v /etc/passwd:/etc/passwd -p 8888:8888 -p 6006:6006 $image_name
+# Example: generate container 
+$ bash docker/generate_container.sh --image_name $IMAGE_NAME --container_name $CONTAINER_NAME
 
 # Example: start container
-$ docker exec -it $container_name bash
+$ docker exec -it $CONTAINER_NAME bash
 ```
-
-### 3.2. Set container environments
-```sh
-$ pip install -r requirements.txt
-```
-
-### 3.3. Train model
+### 3.2. Train model
 ```sh
 $ sh scripts/run.sh
 ```
@@ -65,10 +67,7 @@ $ sh scripts/run.sh
 | Sentiment Classification |  IMDB   | BERT  |      93%      |
 
 ## 5. LICENSE
-[MIT License](https://github.com/youngerous/pytorch-nlp-template/blob/main/LICENSE)
+[MIT License](https://github.com/youngerous/pytorch-nlp-wandb-hydra-template/blob/main/LICENSE)
 
-
-## 6. TODO
-- [ ] setuptools
-- [ ] max_step option
-- [ ] saving several checkpoints (e.g. saving top-5 ckpts)
+## TODO
+- [ ] fix timezone

@@ -1,0 +1,21 @@
+# Hyperparameter tuning example
+# Hydra + Sweep: https://github.com/wandb/client/issues/1427
+command:
+  - ${env}
+  - ${interpreter}
+  - ${program}
+  - ${args_no_hyphens}
+program: src/main.py
+method: grid
+metric:
+  name: dev.loss
+  goal: minimize
+parameters:
+  lr:
+    values: [5e-5, 1e-5, 5e-4]
+  +gpu:
+    values: [dp, ddp]
+  test:
+    value: False
+  epoch:
+    value: 1

@@ -1,3 +1,5 @@
+outputs/
+wandb/
 checkpoints/
 data/
 results.csv

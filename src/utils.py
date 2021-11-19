@@ -1,10 +1,7 @@
 import math
-import os
 import random
-from datetime import datetime
 
 import numpy as np
-import pandas as pd
 import torch
 import torch.distributed as dist
 from torch.utils.data import Sampler
@@ -35,42 +32,6 @@ class AverageMeter:
         self.sum += val * n
         self.count += n
         self.avg = self.sum / self.count
-
-
-class ResultWriter:
-    def __init__(self, directory):
-
-        self.dir = directory
-        self.hparams = None
-        self.load()
-        self.writer = dict()
-
-    def update(self, args, **results):
-        now = datetime.now()
-        date = "%s-%s %s:%s" % (now.month, now.day, now.hour, now.minute)
-        self.writer.update({"date": date})
-        self.writer.update(results)
-        self.writer.update(vars(args))
-
-        if self.hparams is None:
-            self.hparams = pd.DataFrame(self.writer, index=[0])
-        else:
-            self.hparams = self.hparams.append(self.writer, ignore_index=True)
-        self.save()
-
-    def save(self):
-        assert self.hparams is not None
-        self.hparams.to_csv(self.dir, index=False)
-
-    def load(self):
-        path = os.path.split(self.dir)[0]
-        if not os.path.exists(path):
-            os.makedirs(path)
-            self.hparams = None
-        elif os.path.exists(self.dir):
-            self.hparams = pd.read_csv(self.dir)
-        else:
-            self.hparams = None
 
 
 class SequentialDistributedSampler(Sampler):
@@ -108,9 +69,7 @@ class SequentialDistributedSampler(Sampler):
         ), f"Indices length {len(indices)} and total size {self.total_size} mismatched"
 
         # subsample
-        indices = indices[
-            self.rank * self.num_samples : (self.rank + 1) * self.num_samples
-        ]
+        indices = indices[self.rank * self.num_samples : (self.rank + 1) * self.num_samples]
         assert (
             len(indices) == self.num_samples
         ), f"Indices length {len(indices)} and sample number {self.num_samples} mismatched"

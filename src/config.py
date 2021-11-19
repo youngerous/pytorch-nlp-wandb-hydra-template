@@ -1,49 +1,50 @@
-import argparse
+from dataclasses import MISSING, dataclass
+from typing import Any
+from hydra.core.config_store import ConfigStore
 
 
-def load_config():
-    parser = argparse.ArgumentParser()
+@dataclass
+class Distributed:
+    distributed: bool = MISSING
+    rank: int = MISSING
 
-    # default config
-    parser.add_argument("--root-path", type=str, default="src/data")
-    parser.add_argument("--ckpt-path", type=str, default="src/checkpoints/")
-    parser.add_argument("--result-path", type=str, default="src/results.csv")
-    parser.add_argument("--seed", type=int, default=42, help="Seed for reproducibility")
-    parser.add_argument("--workers", type=int, default=4)
-    parser.add_argument("--log-step", type=int, default=200)
-    parser.add_argument(
-        "--eval-ratio",
-        type=float,
-        default=0.1,
-        help="Evaluation will be done at the end of epoch if set to 0.0",
-    )
-    parser.add_argument(
-        "--amp", action="store_true", default=False, help="PyTorch(>=1.6.x) AMP"
-    )
 
-    # ddp config
-    parser.add_argument(
-        "--distributed", action="store_true", default=False, help="Whether to use ddp"
-    )
-    parser.add_argument("--dist-backend", type=str, default="nccl")
-    parser.add_argument("--dist-url", default="tcp://127.0.0.1:3456", type=str)
-    parser.add_argument(
-        "--world-size", type=int, default=1, help="Total number of processes to run"
-    )
-    parser.add_argument(
-        "--rank", type=int, default=-1, help="Local GPU rank (-1 if not using ddp)"
-    )
+@dataclass
+class DDP(Distributed):
+    distributed: bool = True
+    dist_backend: str = "nccl"
+    dist_url: str = "tcp://127.0.0.1:3456"
+    world_size: int = 1
+    rank: int = 0
 
-    # training config
-    parser.add_argument("--epoch", type=int, default=10)
-    parser.add_argument(
-        "--batch-size", type=int, default=8, help="It means batch size per gpu in ddp"
-    )
-    parser.add_argument("--lr", type=float, default=5e-5)
-    parser.add_argument("--weight-decay", type=float, default=0.1)
-    parser.add_argument("--warmup-ratio", type=float, default=0.1)
-    parser.add_argument("--max-grad-norm", type=float, default=1.0)
-    parser.add_argument("--gradient-accumulation-step", type=int, default=1)
 
-    args = parser.parse_args()
-    return args
+@dataclass
+class DP(Distributed):
+    distributed: bool = False
+    rank: int = -1
+
+
+@dataclass
+class BasicConf:
+    gpu: Distributed
+    test: bool = True
+    amp: bool = True  # torch >= 1.6.x
+
+    seed: int = 42
+    workers: int = 1
+    log_step: int = 200
+    eval_ratio: float = 0.0  # evaluation will be done at the end of epoch if set to 0.0
+
+    epoch: int = 10
+    batch_size_per_gpu: int = 8
+    lr: float = 5e-5
+    weight_decay: float = 0.1
+    warmup_ratio: float = 0.1
+    max_grad_norm: float = 1.0
+    gradient_accumulation_step: int = 1
+
+
+cs = ConfigStore.instance()
+cs.store(name="config", node=BasicConf)
+cs.store(group="gpu", name="ddp", node=DDP)
+cs.store(group="gpu", name="dp", node=DP)
