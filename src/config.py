@@ -36,7 +36,7 @@ class BasicConf:
     eval_ratio: float = 0.0  # evaluation will be done at the end of epoch if set to 0.0
 
     epoch: int = 10
-    batch_size_per_gpu: int = 8
+    batch_size: int = 16  # it will be divided by num_gpu in DDP
     lr: float = 5e-5
     weight_decay: float = 0.1
     warmup_ratio: float = 0.1

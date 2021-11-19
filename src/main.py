@@ -17,6 +17,7 @@ from utils import fix_seed
 
 def worker(rank, hparams, ngpus_per_node: int):
     fix_seed(hparams.seed)
+    batch_size = hparams.batch_size
     if hparams.gpu.distributed:
         hparams.gpu.rank = hparams.gpu.rank * ngpus_per_node + rank
         print(f"Use GPU {hparams.gpu.rank} for training")
@@ -26,6 +27,7 @@ def worker(rank, hparams, ngpus_per_node: int):
             world_size=hparams.gpu.world_size,
             rank=hparams.gpu.rank,
         )
+        batch_size = hparams.batch_size // ngpus_per_node
 
     # get tokenizer
     if hparams.gpu.distributed:
@@ -41,7 +43,7 @@ def worker(rank, hparams, ngpus_per_node: int):
     loaders = get_trn_dev_loader(
         dset=load_dataset("imdb", split="train"),
         tok=tokenizer,
-        batch_size=hparams.batch_size_per_gpu,
+        batch_size=batch_size,
         workers=hparams.workers,
         distributed=hparams.gpu.distributed,
     )
@@ -63,7 +65,7 @@ def worker(rank, hparams, ngpus_per_node: int):
             entity="youngerous",
             config={"ngpus": ngpus_per_node, "num_params": num_params},
         )
-        wandb.run.name = f"ep_{hparams.epoch}_bsz_{hparams.batch_size_per_gpu}_lr_{hparams.lr}_wrmup_{hparams.warmup_ratio}_accum_{hparams.gradient_accumulation_step}_amp_{hparams.amp}_ddp_{hparams.gpu.distributed}"
+        wandb.run.name = f"ep_{hparams.epoch}_bsz_{hparams.batch_size}_lr_{hparams.lr}_wrmup_{hparams.warmup_ratio}_accum_{hparams.gradient_accumulation_step}_amp_{hparams.amp}_ddp_{hparams.gpu.distributed}"
         print(f"# Model Parameters: {num_params}")
         print(f"# WandB Run Name: {wandb.run.name}")
         print(f"# WandB Save Directory: {wandb.run.dir}")
@@ -79,7 +81,7 @@ def worker(rank, hparams, ngpus_per_node: int):
             test_loader = get_tst_loader(
                 dset=load_dataset("imdb", split="test"),
                 tok=tokenizer,
-                batch_size=hparams.batch_size_per_gpu,
+                batch_size=batch_size,
                 workers=hparams.workers,
                 distributed=False,
             )
