@@ -1,21 +1,28 @@
 # Hyperparameter tuning example
+# Config docs: https://docs.wandb.ai/guides/sweeps/configuration
 # Hydra + Sweep: https://github.com/wandb/client/issues/1427
 command:
   - ${env}
   - ${interpreter}
   - ${program}
   - ${args_no_hyphens}
+name: project-hparam-search
+description: detailed explanation
 program: src/main.py
 method: grid
 metric:
   name: dev.loss
   goal: minimize
 parameters:
+  amp:
+    values: [True, False]
   lr:
     values: [5e-5, 1e-5, 5e-4]
+  batch_size:
+    values: [8, 16]
   +gpu:
     values: [dp, ddp]
   test:
-    value: False
+    value: True
   epoch:
-    value: 1
+    value: 5
