@@ -70,4 +70,5 @@ $ sh scripts/run.sh
 [MIT License](https://github.com/youngerous/pytorch-nlp-wandb-hydra-template/blob/main/LICENSE)
 
 ## TODO
+- [ ] inference compatibility
 - [ ] fix timezone
