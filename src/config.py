@@ -31,6 +31,9 @@ class TrainConf:
     amp: bool = True  # torch >= 1.6.x
     ckpt_root: str = "/repo/pytorch-nlp-wandb-hydra-template/src/checkpoints/"
 
+    wandb_project: str = "template"  # wandb project name
+    wandb_entity: str = "youngerous"  # wandb account
+
     seed: int = 42
     workers: int = 1
     log_step: int = 200

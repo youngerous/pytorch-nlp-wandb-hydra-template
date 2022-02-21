@@ -61,8 +61,8 @@ def worker(rank, hparams, ngpus_per_node: int):
     num_params = sum(p.numel() for p in model.parameters() if p.requires_grad)
     if rank in [-1, 0]:
         wandb.init(
-            project="template",
-            entity="youngerous",
+            project=hparams.wandb_project,
+            entity=hparams.wandb_entity,
             config={"ngpus": ngpus_per_node, "num_params": num_params},
         )
         wandb.run.name = f"ep_{hparams.epoch}_bsz_{int(hparams.batch_size)*int(hparams.gradient_accumulation_step)}_lr_{hparams.lr}_wrmup_{hparams.warmup_ratio}_accum_{hparams.gradient_accumulation_step}_amp_{hparams.amp}_ddp_{hparams.gpu.distributed}"
