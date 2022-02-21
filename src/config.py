@@ -25,10 +25,11 @@ class DP(Distributed):
 
 
 @dataclass
-class BasicConf:
+class TrainConf:
     gpu: Distributed
     test: bool = True
     amp: bool = True  # torch >= 1.6.x
+    ckpt_root: str = "/repo/pytorch-nlp-wandb-hydra-template/src/checkpoints/"
 
     seed: int = 42
     workers: int = 1
@@ -45,6 +46,6 @@ class BasicConf:
 
 
 cs = ConfigStore.instance()
-cs.store(name="config", node=BasicConf)
+cs.store(name="train", node=TrainConf)
 cs.store(group="gpu", name="ddp", node=DDP)
 cs.store(group="gpu", name="dp", node=DP)

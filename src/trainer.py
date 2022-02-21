@@ -62,16 +62,16 @@ class Trainer(BaseTrainer):
 
         return optimizer, scheduler
 
-    def fit(self, num_ckpt=1) -> dict:
+    def fit(self) -> dict:
         # this zero gradient update is needed to avoid a warning message in warmup setting
         self.optimizer.zero_grad()
         self.optimizer.step()
         for epoch in tqdm(range(self.hparams.epoch), desc="epoch", disable=not self.main_process):
             if self.distributed:
                 self.train_sampler.set_epoch(epoch)
-            self._train_epoch(epoch, num_ckpt)
+            self._train_epoch(epoch)
 
-    def _train_epoch(self, epoch: int, num_ckpt: int = 1) -> None:
+    def _train_epoch(self, epoch: int) -> None:
         if self.main_process:
             train_loss = AverageMeter()
             train_acc = AverageMeter()
@@ -149,7 +149,9 @@ class Trainer(BaseTrainer):
                 if self.main_process:
                     wandb.log({"dev": {"loss": dev_loss, "acc": dev_acc}}, step=self.global_step)
                     if dev_loss < self.global_dev_loss:
-                        self.save_checkpoint(epoch, dev_loss, dev_acc, self.model, num_ckpt)
+                        self.save_checkpoint(epoch, dev_loss, dev_acc, self.model, best=True)
+                    else:
+                        self.save_checkpoint(epoch, dev_loss, dev_acc, self.model, best=False)
                     tqdm.write(
                         f"[DEV] global step: {self.global_step} | dev loss: {dev_loss:.5f} | dev acc: {dev_acc:.5f}"
                     )

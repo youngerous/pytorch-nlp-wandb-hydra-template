@@ -7,7 +7,7 @@ import torch.distributed as dist
 import torch.multiprocessing as mp
 import wandb
 from datasets import load_dataset
-from transformers import BertForSequenceClassification, BertTokenizer
+from transformers import AutoTokenizer, BertForSequenceClassification
 
 from config import *
 from loader import get_trn_dev_loader, get_tst_loader
@@ -33,11 +33,11 @@ def worker(rank, hparams, ngpus_per_node: int):
     if hparams.gpu.distributed:
         if rank != 0:
             dist.barrier()
-        tokenizer = BertTokenizer.from_pretrained("bert-base-uncased", do_lower_case=True)
+        tokenizer = AutoTokenizer.from_pretrained("bert-base-uncased", do_lower_case=True)
         if rank == 0:
             dist.barrier()
     else:
-        tokenizer = BertTokenizer.from_pretrained("bert-base-uncased", do_lower_case=True)
+        tokenizer = AutoTokenizer.from_pretrained("bert-base-uncased", do_lower_case=True)
 
     # get dataloaders
     loaders = get_trn_dev_loader(
@@ -65,14 +65,14 @@ def worker(rank, hparams, ngpus_per_node: int):
             entity="youngerous",
             config={"ngpus": ngpus_per_node, "num_params": num_params},
         )
-        wandb.run.name = f"ep_{hparams.epoch}_bsz_{hparams.batch_size}_lr_{hparams.lr}_wrmup_{hparams.warmup_ratio}_accum_{hparams.gradient_accumulation_step}_amp_{hparams.amp}_ddp_{hparams.gpu.distributed}"
+        wandb.run.name = f"ep_{hparams.epoch}_bsz_{int(hparams.batch_size)*int(hparams.gradient_accumulation_step)}_lr_{hparams.lr}_wrmup_{hparams.warmup_ratio}_accum_{hparams.gradient_accumulation_step}_amp_{hparams.amp}_ddp_{hparams.gpu.distributed}"
         print(f"# Model Parameters: {num_params}")
         print(f"# WandB Run Name: {wandb.run.name}")
         print(f"# WandB Save Directory: {wandb.run.dir}")
 
     # training phase
     trainer = Trainer(hparams, tokenizer, loaders, model)
-    trainer.fit(num_ckpt=1)
+    trainer.fit()
 
     # testing phase
     if rank in [-1, 0]:
@@ -89,7 +89,7 @@ def worker(rank, hparams, ngpus_per_node: int):
         wandb.finish()
 
 
-@hydra.main(config_path=None, config_name="config")
+@hydra.main(config_path=None, config_name="train")
 def main(cfg):
     ngpus_per_node = torch.cuda.device_count()
 

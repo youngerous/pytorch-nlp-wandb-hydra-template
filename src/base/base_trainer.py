@@ -5,8 +5,9 @@ from typing import *
 import torch
 import torch.nn as nn
 import wandb
-from tensorboardX import SummaryWriter
+
 from torch.nn.parallel import DistributedDataParallel as DDP
+from tqdm import tqdm
 
 
 class BaseTrainer(object):
@@ -45,6 +46,7 @@ class BaseTrainer(object):
             else self.step_total // self.hparams.epoch
         )
         if self.main_process:
+            self.hparams.ckpt_root = os.path.join(self.hparams.ckpt_root, wandb.run.id)
             self.global_dev_loss = float("inf")
             self.log_step = hparams.log_step
             wandb.config.update(self.hparams)
@@ -67,24 +69,40 @@ class BaseTrainer(object):
         return result
 
     def save_checkpoint(
-        self, epoch: int, dev_loss: float, dev_acc: float, model: nn.Module, num_ckpt: int
+        self, epoch: int, dev_loss: float, dev_acc: float, model: nn.Module, best=True
     ) -> None:
-        print(f"Dev loss decreased ({self.global_dev_loss:.5f} → {dev_loss:.5f}). Saving model ...")
-        new_path = os.path.join(
-            wandb.run.dir, f"best_model_step_{self.global_step}_loss_{dev_loss:.5f}.pt"
-        )
+        latest_pth = os.path.join(self.hparams.ckpt_root, "latest")
+        os.makedirs(latest_pth, exist_ok=True)
 
-        for filename in glob.glob(os.path.join(wandb.run.dir, "*.pt")):
-            # TODO: save model up to num_ckpt
+        if best:
+            tqdm.write(
+                f"Dev loss decreased ({self.global_dev_loss:.5f} → {dev_loss:.5f}). Saving best model ..."
+            )
+            best_pth = os.path.join(self.hparams.ckpt_root, "best")
+            os.makedirs(best_pth, exist_ok=True)
+
+            # save best model
+            for filename in glob.glob(os.path.join(self.hparams.ckpt_root, "best", "ckpt_*.pt")):
+                os.remove(filename)  # remove old checkpoint
+            torch.save(
+                model.state_dict(),
+                os.path.join(best_pth, f"ckpt_step_{self.global_step}_loss_{dev_loss:.5f}.pt"),
+            )
+
+            self.global_dev_loss = dev_loss
+            wandb.run.summary["best_step"] = self.global_step
+            wandb.run.summary["best_epoch"] = epoch
+            wandb.run.summary["best_dev_loss"] = dev_loss
+            wandb.run.summary["best_dev_acc"] = dev_acc
+
+        # save latest model
+        tqdm.write(f"Saving latest model ...")
+        for filename in glob.glob(os.path.join(self.hparams.ckpt_root, "latest", "ckpt_*.pt")):
             os.remove(filename)  # remove old checkpoint
-        torch.save(model.state_dict(), new_path)
-        # model.save(new_path)
-
-        self.global_dev_loss = dev_loss
-        wandb.run.summary["best_step"] = self.global_step
-        wandb.run.summary["best_epoch"] = epoch
-        wandb.run.summary["best_dev_loss"] = dev_loss
-        wandb.run.summary["best_dev_acc"] = dev_acc
+        torch.save(
+            model.state_dict(),
+            os.path.join(latest_pth, f"ckpt_step_{self.global_step}_loss_{dev_loss:.5f}.pt"),
+        )
 
     def configure_optimizers(self, *args, **kwargs):
         raise NotImplementedError

@@ -20,6 +20,10 @@ root/
 │  ├─ base/
 │  │  ├─ __init__.py
 │  │  └─ base_trainer.py
+│  ├─ checkpoints/ # gitignored
+│  │  └─ WANDB_RUN_ID/ # automatically generated
+│  │    ├─ best/
+│  │    └─ latest/
 │  ├─ __init__.py
 │  ├─ config.py
 │  ├─ loader.py
