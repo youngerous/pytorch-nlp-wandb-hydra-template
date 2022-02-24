@@ -54,7 +54,7 @@ More dependencies are written in [requirements.txt](https://github.com/youngerou
 $ bash docker/generate_image.sh --image_name $IMAGE_NAME
 
 # Example: generate container 
-$ bash docker/generate_container.sh --image_name $IMAGE_NAME --container_name $CONTAINER_NAME
+$ bash docker/generate_container.sh --image_name $IMAGE_NAME --container_name $CONTAINER_NAME --port_jupyter 8888 --port_tensorboard 6666
 
 # Example: start container
 $ docker exec -it $CONTAINER_NAME bash
@@ -75,4 +75,3 @@ $ sh scripts/run.sh
 
 ## TODO
 - [ ] inference compatibility
-- [ ] fix timezone

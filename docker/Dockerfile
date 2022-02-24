@@ -2,6 +2,7 @@ FROM nvidia/cuda:10.2-cudnn7-devel-ubuntu18.04
 ENV LANG=C.UTF-8 LC_ALL=C.UTF-8
 ENV LC_ALL=C.UTF-8
 
+
 ENV PATH /usr/local/nvidia/bin:/usr/local/cuda/bin:${PATH}
 RUN apt-get update -y
 
@@ -10,6 +11,10 @@ RUN apt-get update \
     && cd /usr/local/bin \
     && ln -s /usr/bin/python3 python \
     && pip3 install --upgrade pip
+
+ARG DEBIAN_FRONTEND=noninteractive
+ENV TZ=Asia/Seoul
+RUN apt-get install -y tzdata
 
 COPY requirements.txt /tmp
 WORKDIR /tmp

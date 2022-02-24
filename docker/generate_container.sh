@@ -7,10 +7,20 @@ for ((argpos=1; argpos<$#; argpos++)); do
         argpos_plus1=$((argpos+1))
         image_name=${!argpos_plus1}
     fi
+    if [ "${!argpos}" == "--port_jupyter" ]; then
+        argpos_plus1=$((argpos+1))
+        port_jupyter=${!argpos_plus1}
+    fi
+    if [ "${!argpos}" == "--port_tensorboard" ]; then
+        argpos_plus1=$((argpos+1))
+        port_tensorboard=${!argpos_plus1}
+    fi
 done
 
-echo "Container_name: " $container_name
-echo "Image_name: " $image_name
+echo "Container Name: " $container_name
+echo "Image Name: " $image_name
+echo "Jupyter Port #: " $port_jupyter
+echo "Tensorboard Port #: " $port_tensorboard
 
 # --gpus '"device=0,1"'
 docker run --gpus '"device=all"' -td --ipc=host --name $container_name\
@@ -18,4 +28,4 @@ docker run --gpus '"device=all"' -td --ipc=host --name $container_name\
 	-v /etc/passwd:/etc/passwd\
     -v /etc/localtime:/etc/localtime:ro\
 	-e TZ=Asia/Seoul\
-	-p 8888:8888 -p 6006:6006 $image_name
+	-p $port_jupyter:$port_jupyter -p $port_tensorboard:$port_tensorboard $image_name
