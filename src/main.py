@@ -69,6 +69,7 @@ def worker(rank, hparams, ngpus_per_node: int):
         print(f"# Model Parameters: {num_params}")
         print(f"# WandB Run Name: {wandb.run.name}")
         print(f"# WandB Save Directory: {wandb.run.dir}")
+        print(f"# Checkpoint Save Directory: {hparams.ckpt_root}")
 
     # training phase
     trainer = Trainer(hparams, tokenizer, loaders, model)
@@ -77,7 +78,9 @@ def worker(rank, hparams, ngpus_per_node: int):
     # testing phase
     if rank in [-1, 0]:
         if hparams.test:
-            state_dict = torch.load(glob.glob(os.path.join(wandb.run.dir, f"best_model_*.pt"))[0])
+            state_dict = torch.load(
+                glob.glob(os.path.join(hparams.ckpt_root, "best", f"ckpt_*.pt"))[0]
+            )
             test_loader = get_tst_loader(
                 dset=load_dataset("imdb", split="test"),
                 tok=tokenizer,
