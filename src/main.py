@@ -1,5 +1,7 @@
 import glob
+import logging
 import os
+from pprint import pformat
 
 import hydra
 import torch
@@ -9,10 +11,12 @@ import wandb
 from datasets import load_dataset
 from transformers import AutoTokenizer, BertForSequenceClassification
 
-from config import *
+from conf.cf_train import *
 from loader import get_trn_dev_loader, get_tst_loader
 from trainer import Trainer
-from utils import fix_seed
+from utils import fix_seed, setup_logger
+
+logger = logging.getLogger()
 
 
 def worker(rank, hparams, ngpus_per_node: int):
@@ -61,8 +65,8 @@ def worker(rank, hparams, ngpus_per_node: int):
     num_params = sum(p.numel() for p in model.parameters() if p.requires_grad)
     if rank in [-1, 0]:
         wandb.init(
-            project=hparams.wandb_project,
-            entity=hparams.wandb_entity,
+            project=hparams.wandb.project,
+            entity=hparams.wandb.entity,
             config={"ngpus": ngpus_per_node, "num_params": num_params},
         )
         wandb.run.name = f"ep_{hparams.epoch}_bsz_{int(hparams.batch_size)*int(hparams.gradient_accumulation_step)}_lr_{hparams.lr}_wrmup_{hparams.warmup_ratio}_accum_{hparams.gradient_accumulation_step}_amp_{hparams.amp}_ddp_{hparams.gpu.distributed}"
@@ -70,6 +74,12 @@ def worker(rank, hparams, ngpus_per_node: int):
         print(f"# WandB Run Name: {wandb.run.name}")
         print(f"# WandB Save Directory: {wandb.run.dir}")
         print(f"# Checkpoint Save Directory: {hparams.ckpt_root}")
+
+        # initialize global logger
+        run_root = os.path.join(hparams.ckpt_root, wandb.run.id)
+        os.makedirs(run_root, exist_ok=True)
+        setup_logger(logger, os.path.join(run_root, "experiment.log"))
+        logger.info("\n%s", pformat(dict(hparams)))
 
     # training phase
     trainer = Trainer(hparams, tokenizer, loaders, model)
@@ -89,10 +99,20 @@ def worker(rank, hparams, ngpus_per_node: int):
                 distributed=False,
             )
             trainer.test(test_loader, state_dict)
+
+        report = {
+            "best_epoch": wandb.run.summary["best_epoch"],
+            "best_step": wandb.run.summary["best_step"],
+            "best_dev_acc": wandb.run.summary["best_dev_acc"],
+            "best_dev_loss": wandb.run.summary["best_dev_loss"],
+            "tst_acc": wandb.run.summary["tst_acc"],
+            "tst_acc": wandb.run.summary["tst_loss"],
+        }
+        logger.info("\n%s", pformat(report))
         wandb.finish()
 
 
-@hydra.main(config_path=None, config_name="train")
+@hydra.main(config_path="conf", config_name="train")
 def main(cfg):
     ngpus_per_node = torch.cuda.device_count()
 

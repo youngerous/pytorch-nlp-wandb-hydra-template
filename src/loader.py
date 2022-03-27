@@ -16,9 +16,7 @@ class IMDB(Dataset):
         print(f"Load {len(self.label)} data.")
 
     def __getitem__(self, idx):
-        src = self.tok(
-            self.text[idx], truncation=True, padding="max_length", return_tensors="pt"
-        )
+        src = self.tok(self.text[idx], truncation=True, padding="max_length", return_tensors="pt")
         return {
             "input_ids": src["input_ids"],
             "token_type_ids": src["token_type_ids"],

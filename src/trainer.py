@@ -1,3 +1,4 @@
+import logging
 import math
 import warnings
 from typing import *
@@ -13,6 +14,8 @@ from transformers import AdamW, get_linear_schedule_with_warmup
 
 from base.base_trainer import BaseTrainer
 from utils import AverageMeter
+
+logger = logging.getLogger()
 
 
 class Trainer(BaseTrainer):
@@ -152,7 +155,7 @@ class Trainer(BaseTrainer):
                         self.save_checkpoint(epoch, dev_loss, dev_acc, self.model, best=True)
                     else:
                         self.save_checkpoint(epoch, dev_loss, dev_acc, self.model, best=False)
-                    tqdm.write(
+                    logger.info(
                         f"[DEV] global step: {self.global_step} | dev loss: {dev_loss:.5f} | dev acc: {dev_acc:.5f}"
                     )
 
@@ -169,7 +172,7 @@ class Trainer(BaseTrainer):
                         },
                         step=self.global_step,
                     )
-                    tqdm.write(
+                    logger.info(
                         f"[TRN] Epoch: {epoch} | Global step: {self.global_step} | Train loss: {loss.item():.5f} | LR: {self.optimizer.param_groups[0]['lr']:.5f}"
                     )
 
@@ -248,4 +251,4 @@ class Trainer(BaseTrainer):
         wandb.log({"tst": {"loss": test_loss.avg, "acc": test_acc.avg}})
         wandb.run.summary["tst_loss"] = test_loss.avg
         wandb.run.summary["tst_acc"] = test_acc.avg
-        tqdm.write(f"[TST] tst loss: {test_loss.avg:.5f} | tst acc: {test_acc.avg:.5f}")
+        logger.info(f"[TST] tst loss: {test_loss.avg:.5f} | tst acc: {test_acc.avg:.5f}")

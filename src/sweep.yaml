@@ -20,9 +20,13 @@ parameters:
     values: [5e-5, 1e-5, 5e-4]
   batch_size:
     values: [8, 16]
-  +gpu:
-    values: [dp, ddp]
   test:
     value: True
   epoch:
     value: 5
+  +wandb.project:
+    value: template
+  +wandb.entity:
+    value: youngerous
+  +gpu:
+    values: [dp, ddp]

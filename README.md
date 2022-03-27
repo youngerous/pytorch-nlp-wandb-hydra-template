@@ -18,14 +18,16 @@ root/
 │  └─ run.sh
 ├─ src/
 │  ├─ base/
-│  │  ├─ __init__.py
 │  │  └─ base_trainer.py
 │  ├─ checkpoints/ # gitignored
 │  │  └─ WANDB_RUN_ID/ # automatically generated
 │  │    ├─ best/
 │  │    └─ latest/
-│  ├─ __init__.py
-│  ├─ config.py
+│  ├─ conf/
+│  │  ├─ defaults/
+│  │    ├─ cf_distributed.py
+│  │    └─ cf_wandb.py
+│  │  └─ cf_train.py
 │  ├─ loader.py
 │  ├─ main.py
 │  ├─ sweep.yaml
@@ -72,6 +74,3 @@ $ sh scripts/run.sh
 
 ## 5. LICENSE
 [MIT License](https://github.com/youngerous/pytorch-nlp-wandb-hydra-template/blob/main/LICENSE)
-
-## TODO
-- [ ] inference compatibility

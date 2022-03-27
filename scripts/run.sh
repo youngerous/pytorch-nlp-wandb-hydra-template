@@ -11,12 +11,12 @@ GPU='ddp'
 AMP='True'
 
 python src/main.py\
-    wandb_project=$WANDB_PROJECT\
-    wandb_entity=$WANDB_ENTITY\
     ckpt_root=$CKPT_ROOT\
     epoch=$EPOCH\
     batch_size=$BATCH_SIZE\
     lr=$LR\
     amp=$AMP\
+    +wandb.project=$WANDB_PROJECT\
+    +wandb.entity=$WANDB_ENTITY\
     +gpu=$GPU\
 

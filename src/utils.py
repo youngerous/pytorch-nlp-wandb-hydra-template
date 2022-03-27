@@ -1,3 +1,4 @@
+import logging
 import math
 import random
 
@@ -5,6 +6,18 @@ import numpy as np
 import torch
 import torch.distributed as dist
 from torch.utils.data import Sampler
+
+
+def setup_logger(logger, save_dir):
+    logger.setLevel(logging.INFO)
+    if logger.hasHandlers():
+        logger.handlers.clear()
+    log_formatter = logging.Formatter(
+        "[%(thread)s] %(asctime)s [%(levelname)s] %(name)s: %(message)s"
+    )
+    console = logging.FileHandler(save_dir)
+    console.setFormatter(log_formatter)
+    logger.addHandler(console)
 
 
 def fix_seed(seed: int) -> None:

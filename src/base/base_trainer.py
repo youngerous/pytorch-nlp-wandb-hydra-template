@@ -1,13 +1,15 @@
 import glob
+import logging
 import os
 from typing import *
 
 import torch
 import torch.nn as nn
 import wandb
-
 from torch.nn.parallel import DistributedDataParallel as DDP
 from tqdm import tqdm
+
+logger = logging.getLogger()
 
 
 class BaseTrainer(object):
@@ -75,7 +77,7 @@ class BaseTrainer(object):
         os.makedirs(latest_pth, exist_ok=True)
 
         if best:
-            tqdm.write(
+            logger.info(
                 f"Dev loss decreased ({self.global_dev_loss:.5f} → {dev_loss:.5f}). Saving best model ..."
             )
             best_pth = os.path.join(self.hparams.ckpt_root, "best")
@@ -96,7 +98,7 @@ class BaseTrainer(object):
             wandb.run.summary["best_dev_acc"] = dev_acc
 
         # save latest model
-        tqdm.write(f"Saving latest model ...")
+        logger.info(f"Saving latest model ...")
         for filename in glob.glob(os.path.join(self.hparams.ckpt_root, "latest", "ckpt_*.pt")):
             os.remove(filename)  # remove old checkpoint
         torch.save(
