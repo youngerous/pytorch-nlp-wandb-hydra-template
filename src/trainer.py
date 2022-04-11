@@ -76,7 +76,8 @@ class Trainer(BaseTrainer):
             if self.stop_train:
                 break
 
-        wandb.run.summary["early_stopped"] = True if self.stop_train else False
+        if self.main_process:
+            wandb.run.summary["early_stopped"] = True if self.stop_train else False
 
     def _train_epoch(self, epoch: int) -> None:
         if self.main_process:
