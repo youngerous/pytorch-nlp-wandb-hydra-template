@@ -65,6 +65,13 @@ class Trainer(BaseTrainer):
 
         return optimizer, scheduler
 
+    def sync_early_stopping(self) -> None:
+        sync = False
+        if self.main_process and self.stop_train:
+            sync = True
+        if sync:
+            self.stop_train = True
+
     def fit(self) -> dict:
         # this zero gradient update is needed to avoid a warning message in warmup setting
         self.optimizer.zero_grad()
@@ -181,6 +188,7 @@ class Trainer(BaseTrainer):
                         f"[TRN] Epoch: {epoch} | Global step: {self.global_step} | Train loss: {loss.item():.5f} | LR: {self.optimizer.param_groups[0]['lr']:.5f}"
                     )
 
+            self.sync_early_stopping()
             if self.stop_train:
                 logger.info("##### Early Stopped #####")
                 break
