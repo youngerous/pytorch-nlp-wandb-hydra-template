@@ -65,13 +65,6 @@ class Trainer(BaseTrainer):
 
         return optimizer, scheduler
 
-    def sync_early_stopping(self) -> None:
-        sync = False
-        if self.main_process and self.stop_train:
-            sync = True
-        if sync:
-            self.stop_train = True
-
     def fit(self) -> dict:
         # this zero gradient update is needed to avoid a warning message in warmup setting
         self.optimizer.zero_grad()
@@ -160,16 +153,29 @@ class Trainer(BaseTrainer):
 
             # validate and logging
             if self.global_step != 0 and self.global_step % self.eval_step == 0:
-                dev_loss, dev_acc = self.validate(epoch)
-                if self.main_process:
-                    wandb.log({"dev": {"loss": dev_loss, "acc": dev_acc}}, step=self.global_step)
-                    if dev_loss < self.global_dev_loss:
-                        self.save_checkpoint(epoch, dev_loss, dev_acc, self.model, best=True)
-                    else:
-                        self.save_checkpoint(epoch, dev_loss, dev_acc, self.model, best=False)
-                    logger.info(
-                        f"[DEV] global step: {self.global_step} | dev loss: {dev_loss:.5f} | dev acc: {dev_acc:.5f}"
-                    )
+                dev_loss = self.validate(epoch)
+                if dev_loss < self.global_dev_loss:  # best model
+                    if self.early_stop:  # init early stop
+                        self.early_stop_cnt = 0
+                    if self.main_process:  # save ckpt
+                        wandb.log({"dev": {"loss": dev_loss}}, step=self.global_step)
+                        self.save_checkpoint(epoch, dev_loss, self.model, best=True)
+                        logger.info(
+                            f"[DEV] global step: {self.global_step} | dev loss: {dev_loss:.5f}"
+                        )
+                    self.global_dev_loss = dev_loss
+                else:
+                    if self.early_stop:  # count early stop
+                        self.early_stop_cnt += 1
+                        if self.main_process:
+                            logger.info(f"Early stop tolerance: {self.early_stop_cnt}")
+                        if self.early_stop_cnt > self.hparams.early_stop_tolerance:
+                            self.stop_train = True
+                    if self.main_process:  # save ckpt
+                        self.save_checkpoint(epoch, dev_loss, self.model, best=False)
+                        logger.info(
+                            f"[DEV] global step: {self.global_step} | dev loss: {dev_loss:.5f}"
+                        )
 
             # train logging
             if self.main_process:
@@ -188,9 +194,9 @@ class Trainer(BaseTrainer):
                         f"[TRN] Epoch: {epoch} | Global step: {self.global_step} | Train loss: {loss.item():.5f} | LR: {self.optimizer.param_groups[0]['lr']:.5f}"
                     )
 
-            self.sync_early_stopping()
             if self.stop_train:
-                logger.info("##### Early Stopped #####")
+                if self.main_process:
+                    logger.info("##### Early Stopped #####")
                 break
 
     @torch.no_grad()
