@@ -18,6 +18,7 @@ class TrainConf:
     workers: int = 1
     log_step: int = 200
     eval_ratio: float = 0.0  # evaluation will be done at the end of epoch if set to 0.0
+    early_stop_tolerance: int = -1
 
     epoch: int = 10
     batch_size: int = 16  # it will be divided by num_gpu in DDP

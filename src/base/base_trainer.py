@@ -47,10 +47,16 @@ class BaseTrainer(object):
             if self.hparams.eval_ratio > 0
             else self.step_total // self.hparams.epoch
         )
+        self.stop_train = False  # for early stopping
         if self.main_process:
             self.hparams.ckpt_root = os.path.join(self.hparams.ckpt_root, wandb.run.id)
             self.global_dev_loss = float("inf")
             self.log_step = hparams.log_step
+            if hparams.early_stop_tolerance > 0:
+                self.early_stop = True
+                self.early_stop_cnt = 0
+            else:
+                self.early_stop = False
             wandb.config.update(self.hparams)
             wandb.watch(self.model)
             wandb.run.summary["step_total"] = self.step_total
@@ -91,11 +97,20 @@ class BaseTrainer(object):
                 os.path.join(best_pth, f"ckpt_step_{self.global_step}_loss_{dev_loss:.5f}.pt"),
             )
 
+            if self.early_stop:
+                self.early_stop_cnt = 0
+
             self.global_dev_loss = dev_loss
             wandb.run.summary["best_step"] = self.global_step
             wandb.run.summary["best_epoch"] = epoch
             wandb.run.summary["best_dev_loss"] = dev_loss
             wandb.run.summary["best_dev_acc"] = dev_acc
+        else:  # early stop counting
+            if self.early_stop:
+                self.early_stop_cnt += 1
+                logger.info(f"Early stop tolerance: {self.early_stop_cnt}")
+                if self.early_stop_cnt > self.hparams.early_stop_tolerance:
+                    self.stop_train = True
 
         # save latest model
         logger.info(f"Saving latest model ...")

@@ -73,6 +73,10 @@ class Trainer(BaseTrainer):
             if self.distributed:
                 self.train_sampler.set_epoch(epoch)
             self._train_epoch(epoch)
+            if self.stop_train:
+                break
+
+        wandb.run.summary["early_stopped"] = True if self.stop_train else False
 
     def _train_epoch(self, epoch: int) -> None:
         if self.main_process:
@@ -175,6 +179,10 @@ class Trainer(BaseTrainer):
                     logger.info(
                         f"[TRN] Epoch: {epoch} | Global step: {self.global_step} | Train loss: {loss.item():.5f} | LR: {self.optimizer.param_groups[0]['lr']:.5f}"
                     )
+
+            if self.stop_train:
+                logger.info("##### Early Stopped #####")
+                break
 
     @torch.no_grad()
     def validate(self, epoch: int) -> float:

@@ -107,6 +107,7 @@ def worker(rank, hparams, ngpus_per_node: int):
             "best_dev_loss": wandb.run.summary["best_dev_loss"],
             "tst_acc": wandb.run.summary["tst_acc"],
             "tst_acc": wandb.run.summary["tst_loss"],
+            "early_stopped": wandb.run.summary["early_stopped"],
         }
         logger.info("\n%s", pformat(report))
         wandb.finish()
