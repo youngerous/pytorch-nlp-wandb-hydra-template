@@ -154,6 +154,7 @@ class Trainer(BaseTrainer):
             # validate and logging
             if self.global_step != 0 and self.global_step % self.eval_step == 0:
                 dev_loss = self.validate(epoch)
+                # TODO: [BUG] sync all values in local ranks
                 if dev_loss < self.global_dev_loss:  # best model
                     if self.early_stop:  # init early stop
                         self.early_stop_cnt = 0

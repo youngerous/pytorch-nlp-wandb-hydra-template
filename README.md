@@ -74,3 +74,6 @@ $ sh scripts/run.sh
 
 ## 5. LICENSE
 [MIT License](https://github.com/youngerous/pytorch-nlp-wandb-hydra-template/blob/main/LICENSE)
+
+## TODO
+- [ ] sync every global_dev_loss value in local ranks (157 in src/trainer.py)
