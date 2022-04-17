@@ -9,6 +9,9 @@ import wandb
 from torch.nn.parallel import DistributedDataParallel as DDP
 from tqdm import tqdm
 
+if torch.distributed.is_available():
+    from torch.distributed import ReduceOp
+
 logger = logging.getLogger()
 
 
@@ -63,6 +66,52 @@ class BaseTrainer(object):
             wandb.config.update(self.hparams)
             wandb.watch(self.model)
             wandb.run.summary["step_total"] = self.step_total
+
+    def reduce_boolean_decision(
+        self,
+        decision: bool,
+        reduce_op: Optional[Union[ReduceOp, str]] = ReduceOp.SUM,
+        stop_option: str = "all",
+    ) -> bool:
+        """This function is partially modified from pytorch-lightning
+
+        Args:
+            decision (bool): Boolean value whether to early stop the process
+            reduce_op (Optional[Union[ReduceOp, str]]): DDP reduce operator
+            stop_option (str): Early stopping option according to each process decision
+
+        Return: Reduced boolean value
+
+        Ref:
+            https://github.com/PyTorchLightning/pytorch-lightning/blob/939d56c6d69202318baf2fbf65ceda00c63363fd/pytorch_lightning/strategies/parallel.py#L113
+        """
+        assert stop_option in ["all", "half", "strict"]
+        divide_by_world_size = False
+        group = torch.distributed.group.WORLD
+        decision = torch.tensor(int(decision), device=self.device)
+
+        if isinstance(reduce_op, str):
+            if reduce_op.lower() in ("avg", "mean"):
+                op = ReduceOp.SUM
+                divide_by_world_size = True
+            else:
+                op = getattr(ReduceOp, reduce_op.upper())
+        else:
+            op = reduce_op
+
+        torch.distributed.barrier(group=group)
+        torch.distributed.all_reduce(decision, op=op, group=group, async_op=False)
+        if divide_by_world_size:
+            decision = decision / torch.distributed.get_world_size(group)
+
+        if stop_option == "all":  # stop if every process calls stopping
+            decision = bool(decision == self.hparams.gpu.world_size)
+        elif stop_option == "half":  # stop if more than half processes call stopping
+            decision = bool(decision > int(self.hparams.gpu.world_size // 2))
+        elif stop_option == "strict":  # stop if just one process calls stopping
+            decision = bool(decision > 0)
+
+        return decision
 
     def get_parameter_names(self, model, forbidden_layer_types):
         """

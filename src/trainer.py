@@ -151,10 +151,26 @@ class Trainer(BaseTrainer):
             if (step + 1) % self.gradient_accumulation_step != 0:
                 continue
 
+            # train logging
+            if self.main_process:
+                train_loss.update(loss.item())
+                train_acc.update(acc["accuracy"])
+                if self.global_step != 0 and self.global_step % self.log_step == 0:
+                    wandb.log(
+                        {
+                            "train": {"loss": train_loss.avg, "acc": train_acc.avg},
+                            "lr": self.optimizer.param_groups[0]["lr"],
+                            "epoch": epoch,
+                        },
+                        step=self.global_step,
+                    )
+                    logger.info(
+                        f"[TRN] Epoch: {epoch} | Global step: {self.global_step} | Train loss: {loss.item():.5f} | LR: {self.optimizer.param_groups[0]['lr']:.5f}"
+                    )
+
             # validate and logging
             if self.global_step != 0 and self.global_step % self.eval_step == 0:
                 dev_loss = self.validate(epoch)
-                # TODO: [BUG] sync all values in local ranks
                 if dev_loss < self.global_dev_loss:  # best model
                     if self.early_stop:  # init early stop
                         self.early_stop_cnt = 0
@@ -178,27 +194,15 @@ class Trainer(BaseTrainer):
                             f"[DEV] global step: {self.global_step} | dev loss: {dev_loss:.5f}"
                         )
 
-            # train logging
-            if self.main_process:
-                train_loss.update(loss.item())
-                train_acc.update(acc["accuracy"])
-                if self.global_step != 0 and self.global_step % self.log_step == 0:
-                    wandb.log(
-                        {
-                            "train": {"loss": train_loss.avg, "acc": train_acc.avg},
-                            "lr": self.optimizer.param_groups[0]["lr"],
-                            "epoch": epoch,
-                        },
-                        step=self.global_step,
+                # call early stopping module
+                if self.distributed:  # sync early stop with all processes in ddp
+                    self.stop_train = self.reduce_boolean_decision(
+                        self.stop_train, stop_option="all"
                     )
-                    logger.info(
-                        f"[TRN] Epoch: {epoch} | Global step: {self.global_step} | Train loss: {loss.item():.5f} | LR: {self.optimizer.param_groups[0]['lr']:.5f}"
-                    )
-
-            if self.stop_train:
-                if self.main_process:
-                    logger.info("##### Early Stopped #####")
-                break
+                if self.stop_train:
+                    if self.main_process:
+                        logger.info("### All the processes called early stopping ###")
+                    break
 
     @torch.no_grad()
     def validate(self, epoch: int) -> float:
