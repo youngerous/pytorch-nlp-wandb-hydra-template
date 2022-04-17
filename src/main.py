@@ -54,12 +54,15 @@ def worker(rank, hparams, ngpus_per_node: int):
 
     # get model
     if hparams.gpu.distributed:
+        torch.cuda.set_device(rank)
+        torch.cuda.empty_cache()
         if rank != 0:
             dist.barrier()
         model = BertForSequenceClassification.from_pretrained("bert-base-uncased")
         if rank == 0:
             dist.barrier()
     else:
+        torch.cuda.empty_cache()
         model = BertForSequenceClassification.from_pretrained("bert-base-uncased")
 
     num_params = sum(p.numel() for p in model.parameters() if p.requires_grad)
