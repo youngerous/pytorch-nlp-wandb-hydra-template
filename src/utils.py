@@ -7,6 +7,8 @@ import torch
 import torch.distributed as dist
 from torch.utils.data import Sampler
 
+logger = logging.getLogger()
+
 
 def setup_logger(logger, save_dir):
     logger.setLevel(logging.INFO)
@@ -91,3 +93,50 @@ class SequentialDistributedSampler(Sampler):
 
     def __len__(self):
         return self.num_samples
+
+
+class EvalManager:
+    """Evaluation manager including dev loss comparison and early stopping"""
+
+    def __init__(self, patience=7, delta=0, trace_func=logger.info, activate_early_stop=True):
+        """
+        Args:
+            patience (int): How long to wait after last time validation loss improved
+            delta (float): Minimum change in the monitored quantity to qualify as an improvement
+            trace_func (function): trace print function
+            activate_early_stop (bool): Whether to activate early stopping while training
+        """
+
+        self.global_dev_loss = float("inf")
+        self.delta = delta
+        self.trace_func = trace_func
+        self.activate_early_stop = activate_early_stop
+
+        # early stopping options
+        self.early_stop = False
+        if self.activate_early_stop:
+            self.patience = patience
+            self.counter = 0
+
+    def __call__(self, dev_loss: float, global_step: int, main_proccess: bool) -> bool:
+        is_best = False
+
+        if dev_loss < self.global_dev_loss - self.delta:
+            self.global_dev_loss = dev_loss
+            is_best = True
+            if main_proccess:
+                self.trace_func(f"[DEV] global step: {global_step} | dev loss: {dev_loss:.5f}")
+            if self.activate_early_stop:
+                self.counter = 0
+
+        else:
+            if self.activate_early_stop:
+                if main_proccess:
+                    self.trace_func(
+                        f"EarlyStopping counter: {self.counter} (Patience of every process: {self.patience})"
+                    )
+                if self.counter >= self.patience:
+                    self.early_stop = True
+                self.counter += 1
+
+        return is_best

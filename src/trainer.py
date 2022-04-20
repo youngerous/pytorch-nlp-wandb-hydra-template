@@ -1,16 +1,17 @@
 import logging
-import math
 import warnings
 from typing import *
 
 warnings.filterwarnings("ignore")
 
+from typing import Tuple
+
 import torch
 import torch.nn.utils as torch_utils
 import wandb
 from datasets import load_metric
+from torch import Tensor as T
 from tqdm import tqdm
-from transformers import AdamW, get_linear_schedule_with_warmup
 
 from base.base_trainer import BaseTrainer
 from utils import AverageMeter
@@ -37,34 +38,6 @@ class Trainer(BaseTrainer):
         if self.main_process:
             wandb.run.summary["step_warmup"] = self.warmup_steps
 
-    def configure_optimizers(self):
-        # optimizer
-        decay_parameters = self.get_parameter_names(self.model, [torch.nn.LayerNorm])
-        decay_parameters = [name for name in decay_parameters if "bias" not in name]
-        optimizer_grouped_parameters = [
-            {
-                "params": [p for n, p in self.model.named_parameters() if n in decay_parameters],
-                "weight_decay": self.hparams.weight_decay,
-            },
-            {
-                "params": [
-                    p for n, p in self.model.named_parameters() if n not in decay_parameters
-                ],
-                "weight_decay": 0.0,
-            },
-        ]
-        optimizer = AdamW(optimizer_grouped_parameters, lr=self.hparams.lr)
-
-        # lr scheduler with warmup
-        self.warmup_steps = math.ceil(self.step_total * self.hparams.warmup_ratio)
-        scheduler = get_linear_schedule_with_warmup(
-            optimizer,
-            num_warmup_steps=self.warmup_steps,
-            num_training_steps=self.step_total,
-        )
-
-        return optimizer, scheduler
-
     def fit(self) -> dict:
         # this zero gradient update is needed to avoid a warning message in warmup setting
         self.optimizer.zero_grad()
@@ -73,11 +46,11 @@ class Trainer(BaseTrainer):
             if self.distributed:
                 self.train_sampler.set_epoch(epoch)
             self._train_epoch(epoch)
-            if self.stop_train:
+            if self.eval_mgr.early_stop:
                 break
 
         if self.main_process:
-            wandb.run.summary["early_stopped"] = True if self.stop_train else False
+            wandb.run.summary["early_stopped"] = True if self.eval_mgr.early_stop else False
 
     def _train_epoch(self, epoch: int) -> None:
         if self.main_process:
@@ -92,117 +65,43 @@ class Trainer(BaseTrainer):
         ):
             self.model.train()
 
-            # load to machine
-            input_ids = batch["input_ids"].squeeze(1)
-            token_type_ids = batch["token_type_ids"].squeeze(1)
-            attention_mask = batch["attention_mask"].squeeze(1)
-            labels = batch["labels"]
+            batch_input = self._set_batch_input(batch)
 
-            input_ids = input_ids.to(self.device, non_blocking=True)
-            token_type_ids = token_type_ids.to(self.device, non_blocking=True)
-            attention_mask = attention_mask.to(self.device, non_blocking=True)
-            labels = labels.to(self.device, non_blocking=True)
-
-            # compute loss
-            if self.hparams.amp:
-                with torch.cuda.amp.autocast():
-                    output = self.model(
-                        input_ids=input_ids,
-                        token_type_ids=token_type_ids,
-                        attention_mask=attention_mask,
-                        labels=labels,
-                    )
-                    loss = output.loss
-            else:
-                output = self.model(
-                    input_ids=input_ids,
-                    token_type_ids=token_type_ids,
-                    attention_mask=attention_mask,
-                    labels=labels,
-                )
-                loss = output.loss
-            pred = torch.argmax(output.logits, dim=1)
-            acc = self.accuracy.compute(references=labels.data, predictions=pred.data)
-
-            # update
-            loss = loss / self.gradient_accumulation_step
-            if not self.distributed:
-                loss = loss.mean()
-
-            if self.hparams.amp:
-                self.scaler.scale(loss).backward()
-                if (step + 1) % self.gradient_accumulation_step == 0:
-                    self.scaler.unscale_(self.optimizer)
-                    torch_utils.clip_grad_norm_(self.model.parameters(), self.max_grad_norm)
-                    self.scaler.step(self.optimizer)
-                    self.scheduler.step()
-                    self.scaler.update()
-                    self.optimizer.zero_grad()  # when accumulating, only after step()
-                    self.global_step += 1
-            else:
-                loss.backward()
-                if (step + 1) % self.gradient_accumulation_step == 0:
-                    torch_utils.clip_grad_norm_(self.model.parameters(), self.max_grad_norm)
-                    self.optimizer.step()
-                    self.scheduler.step()
-                    self.optimizer.zero_grad()
-                    self.global_step += 1
+            loss, logit = self._compute_loss(batch_input)
+            pred = torch.argmax(logit, dim=1)
+            loss = self._aggregate_loss(loss)
+            self._update_loss(loss, step)
+            acc = self.accuracy.compute(
+                references=batch_input["labels"].data, predictions=pred.data
+            )
 
             if (step + 1) % self.gradient_accumulation_step != 0:
                 continue
 
             # train logging
             if self.main_process:
-                train_loss.update(loss.item())
-                train_acc.update(acc["accuracy"])
-                if self.global_step != 0 and self.global_step % self.log_step == 0:
-                    wandb.log(
-                        {
-                            "train": {"loss": train_loss.avg, "acc": train_acc.avg},
-                            "lr": self.optimizer.param_groups[0]["lr"],
-                            "epoch": epoch,
-                        },
-                        step=self.global_step,
-                    )
-                    logger.info(
-                        f"[TRN] Epoch: {epoch} | Global step: {self.global_step} | Train loss: {loss.item():.5f} | LR: {self.optimizer.param_groups[0]['lr']:.5f}"
-                    )
+                self._logging_train(epoch, train_loss, loss, train_acc, acc)
 
             # validate and logging
             if self.global_step != 0 and self.global_step % self.eval_step == 0:
-                dev_loss = self.validate(epoch)
-                if dev_loss < self.global_dev_loss:  # best model
-                    if self.early_stop:  # init early stop
-                        self.early_stop_cnt = 0
-                    if self.main_process:  # save ckpt
-                        wandb.log({"dev": {"loss": dev_loss}}, step=self.global_step)
-                        self.save_checkpoint(epoch, dev_loss, self.model, best=True)
-                        logger.info(
-                            f"[DEV] global step: {self.global_step} | dev loss: {dev_loss:.5f}"
-                        )
-                    self.global_dev_loss = dev_loss
-                else:
-                    if self.early_stop:  # count early stop
-                        self.early_stop_cnt += 1
-                        if self.main_process:
-                            logger.info(f"Early stop tolerance: {self.early_stop_cnt}")
-                        if self.early_stop_cnt > self.hparams.early_stop_tolerance:
-                            self.stop_train = True
-                    if self.main_process:  # save ckpt
-                        self.save_checkpoint(epoch, dev_loss, self.model, best=False)
-                        logger.info(
-                            f"[DEV] global step: {self.global_step} | dev loss: {dev_loss:.5f}"
-                        )
-
-                # call early stopping module
-                if self.distributed:  # sync early stop with all processes in ddp
-                    self.stop_train = self.reduce_boolean_decision(
-                        self.stop_train, stop_option="all"
+                dev_loss, dev_acc = self.validate(epoch)
+                is_best = self.eval_mgr(dev_loss, self.global_step, self.main_process)
+                global_dev_loss = self.eval_mgr.global_dev_loss
+                if self.main_process:
+                    wandb.log({"dev": {"loss": dev_loss}}, step=self.global_step)
+                    self.save_checkpoint(
+                        epoch, global_dev_loss, dev_loss, dev_acc, self.model, best=is_best
                     )
-                if self.stop_train:
-                    if self.main_process:
-                        logger.info("### All the processes called early stopping ###")
-                    break
+
+                if self.eval_mgr.activate_early_stop:
+                    if self.distributed:  # sync early stop with all processes in ddp
+                        self.eval_mgr.early_stop = self.reduce_boolean_decision(
+                            self.eval_mgr.early_stop, stop_option="all"
+                        )
+                    if self.eval_mgr.early_stop:
+                        if self.main_process:
+                            logger.info("### Every process called early stopping ###")
+                        break
 
     @torch.no_grad()
     def validate(self, epoch: int) -> float:
@@ -280,3 +179,87 @@ class Trainer(BaseTrainer):
         wandb.run.summary["tst_loss"] = test_loss.avg
         wandb.run.summary["tst_acc"] = test_acc.avg
         logger.info(f"[TST] tst loss: {test_loss.avg:.5f} | tst acc: {test_acc.avg:.5f}")
+
+    def _set_batch_input(self, batch: T) -> dict:
+        input_ids = batch["input_ids"].squeeze(1)
+        token_type_ids = batch["token_type_ids"].squeeze(1)
+        attention_mask = batch["attention_mask"].squeeze(1)
+        labels = batch["labels"]
+        input_ids, token_type_ids, attention_mask, labels = self.to_device(
+            input_ids, token_type_ids, attention_mask, labels
+        )
+
+        return {
+            "input_ids": input_ids,
+            "token_type_ids": token_type_ids,
+            "attention_mask": attention_mask,
+            "labels": labels,
+        }
+
+    def _compute_loss(self, batch_input: dict) -> Tuple[T, T]:
+        if self.hparams.amp:
+            with torch.cuda.amp.autocast():
+                output = self.model(
+                    input_ids=batch_input["input_ids"],
+                    token_type_ids=batch_input["token_type_ids"],
+                    attention_mask=batch_input["attention_mask"],
+                    labels=batch_input["labels"],
+                )
+        else:
+            output = self.model(
+                input_ids=batch_input["input_ids"],
+                token_type_ids=batch_input["token_type_ids"],
+                attention_mask=batch_input["attention_mask"],
+                labels=batch_input["labels"],
+            )
+
+        return output.loss, output.logits
+
+    def _aggregate_loss(self, loss: T) -> T:
+        loss = loss / self.gradient_accumulation_step
+        if not self.distributed:
+            loss = loss.mean()
+        return loss
+
+    def _update_loss(self, loss: T, step: int) -> None:
+        if self.hparams.amp:
+            self.scaler.scale(loss).backward()
+            if (step + 1) % self.gradient_accumulation_step == 0:
+                self.scaler.unscale_(self.optimizer)
+                torch_utils.clip_grad_norm_(self.model.parameters(), self.max_grad_norm)
+                self.scaler.step(self.optimizer)
+                self.scheduler.step()
+                self.scaler.update()
+                self.optimizer.zero_grad()  # when accumulating, only after step()
+                self.global_step += 1
+        else:
+            loss.backward()
+            if (step + 1) % self.gradient_accumulation_step == 0:
+                torch_utils.clip_grad_norm_(self.model.parameters(), self.max_grad_norm)
+                self.optimizer.step()
+                self.scheduler.step()
+                self.optimizer.zero_grad()
+                self.global_step += 1
+
+    def _logging_train(
+        self,
+        epoch: int,
+        train_loss: AverageMeter,
+        step_loss: T,
+        train_acc: AverageMeter,
+        step_acc: float,
+    ) -> None:
+        train_loss.update(step_loss.item())
+        train_acc.update(step_acc["accuracy"])
+        if self.global_step != 0 and self.global_step % self.log_step == 0:
+            wandb.log(
+                {
+                    "train": {"loss": train_loss.avg, "acc": train_acc.avg},
+                    "lr": self.optimizer.param_groups[0]["lr"],
+                    "epoch": epoch,
+                },
+                step=self.global_step,
+            )
+            logger.info(
+                f"[TRN] Epoch: {epoch} | Global step: {self.global_step} | Train loss: {step_loss.item():.5f} | LR: {self.optimizer.param_groups[0]['lr']:.5f}"
+            )

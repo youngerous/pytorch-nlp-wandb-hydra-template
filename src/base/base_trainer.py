@@ -1,5 +1,6 @@
 import glob
 import logging
+import math
 import os
 from typing import *
 
@@ -8,6 +9,8 @@ import torch.nn as nn
 import wandb
 from torch.nn.parallel import DistributedDataParallel as DDP
 from tqdm import tqdm
+from transformers import AdamW, get_linear_schedule_with_warmup
+from utils import EvalManager
 
 if torch.distributed.is_available():
     from torch.distributed import ReduceOp
@@ -52,13 +55,10 @@ class BaseTrainer(object):
         )
 
         # early stopping options
-        self.stop_train = False
-        self.global_dev_loss = float("inf")
-        if hparams.early_stop_tolerance > 0:
-            self.early_stop = True
-            self.early_stop_cnt = 0
-        else:
-            self.early_stop = False
+        activate_earlystop = True if hparams.early_stop_tolerance > 0 else False
+        self.eval_mgr = EvalManager(
+            patience=hparams.early_stop_tolerance, activate_early_stop=activate_earlystop
+        )
 
         if self.main_process:
             self.hparams.ckpt_root = os.path.join(self.hparams.ckpt_root, wandb.run.id)
@@ -66,6 +66,12 @@ class BaseTrainer(object):
             wandb.config.update(self.hparams)
             wandb.watch(self.model)
             wandb.run.summary["step_total"] = self.step_total
+
+    def to_device(self, *tensors):
+        bundle = []
+        for tensor in tensors:
+            bundle.append(tensor.to(self.device, non_blocking=True))
+        return bundle if len(bundle) > 1 else bundle[0]
 
     def reduce_boolean_decision(
         self,
@@ -113,6 +119,34 @@ class BaseTrainer(object):
 
         return decision
 
+    def configure_optimizers(self):
+        # optimizer
+        decay_parameters = self.get_parameter_names(self.model, [torch.nn.LayerNorm])
+        decay_parameters = [name for name in decay_parameters if "bias" not in name]
+        optimizer_grouped_parameters = [
+            {
+                "params": [p for n, p in self.model.named_parameters() if n in decay_parameters],
+                "weight_decay": self.hparams.weight_decay,
+            },
+            {
+                "params": [
+                    p for n, p in self.model.named_parameters() if n not in decay_parameters
+                ],
+                "weight_decay": 0.0,
+            },
+        ]
+        optimizer = AdamW(optimizer_grouped_parameters, lr=self.hparams.lr)
+
+        # lr scheduler with warmup
+        self.warmup_steps = math.ceil(self.step_total * self.hparams.warmup_ratio)
+        scheduler = get_linear_schedule_with_warmup(
+            optimizer,
+            num_warmup_steps=self.warmup_steps,
+            num_training_steps=self.step_total,
+        )
+
+        return optimizer, scheduler
+
     def get_parameter_names(self, model, forbidden_layer_types):
         """
         Returns the names of the model parameters that are not inside a forbidden layer.
@@ -129,14 +163,20 @@ class BaseTrainer(object):
         return result
 
     def save_checkpoint(
-        self, epoch: int, dev_loss: float, dev_acc: float, model: nn.Module, best=True
+        self,
+        epoch: int,
+        global_dev_loss: float,
+        dev_loss: float,
+        dev_acc: float,
+        model: nn.Module,
+        best=True,
     ) -> None:
         latest_pth = os.path.join(self.hparams.ckpt_root, "latest")
         os.makedirs(latest_pth, exist_ok=True)
 
         if best:
             logger.info(
-                f"Dev loss decreased ({self.global_dev_loss:.5f} → {dev_loss:.5f}). Saving best model ..."
+                f"Dev loss decreased ({global_dev_loss:.5f} → {dev_loss:.5f}). Saving best model ..."
             )
             best_pth = os.path.join(self.hparams.ckpt_root, "best")
             os.makedirs(best_pth, exist_ok=True)
@@ -149,7 +189,6 @@ class BaseTrainer(object):
                 os.path.join(best_pth, f"ckpt_step_{self.global_step}_loss_{dev_loss:.5f}.pt"),
             )
 
-            self.global_dev_loss = dev_loss
             wandb.run.summary["best_step"] = self.global_step
             wandb.run.summary["best_epoch"] = epoch
             wandb.run.summary["best_dev_loss"] = dev_loss
@@ -163,9 +202,6 @@ class BaseTrainer(object):
             model.state_dict(),
             os.path.join(latest_pth, f"ckpt_step_{self.global_step}_loss_{dev_loss:.5f}.pt"),
         )
-
-    def configure_optimizers(self, *args, **kwargs):
-        raise NotImplementedError
 
     def fit(self):
         raise NotImplementedError
