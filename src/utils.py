@@ -120,12 +120,12 @@ class EvalManager:
 
     def __call__(self, dev_loss: float, global_step: int, main_proccess: bool) -> bool:
         is_best = False
+        if main_proccess:
+            self.trace_func(f"[DEV] global step: {global_step} | dev loss: {dev_loss:.5f}")
 
         if dev_loss < self.global_dev_loss - self.delta:
-            self.global_dev_loss = dev_loss
             is_best = True
-            if main_proccess:
-                self.trace_func(f"[DEV] global step: {global_step} | dev loss: {dev_loss:.5f}")
+            self.global_dev_loss = dev_loss
             if self.activate_early_stop:
                 self.counter = 0
 
