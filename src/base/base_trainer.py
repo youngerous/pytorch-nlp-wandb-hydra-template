@@ -175,9 +175,7 @@ class BaseTrainer(object):
         os.makedirs(latest_pth, exist_ok=True)
 
         if best:
-            logger.info(
-                f"Dev loss decreased ({global_dev_loss:.5f} → {dev_loss:.5f}). Saving best model ..."
-            )
+            logger.info(f"Saving best model ...")
             best_pth = os.path.join(self.hparams.ckpt_root, "best")
             os.makedirs(best_pth, exist_ok=True)
 

@@ -124,6 +124,9 @@ class EvalManager:
             self.trace_func(f"[DEV] global step: {global_step} | dev loss: {dev_loss:.5f}")
 
         if dev_loss < self.global_dev_loss - self.delta:
+            self.trace_func(
+                f"Global dev loss decreased ({self.global_dev_loss:.5f} → {dev_loss:.5f})"
+            )
             is_best = True
             self.global_dev_loss = dev_loss
             if self.activate_early_stop:
