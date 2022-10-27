@@ -1,5 +1,7 @@
 # PyTorch NLP Template with Hydra & WandB 🔥
 
+> Seems too complex to simply implement your research idea? Then how about [this template with pytorch-lightning](https://github.com/youngerous/pytorch-lightning-nlp-template)?
+
 PyTorch template for easy use! (actually, for my own😉)
 - This template especially focuses on **BERT-based NLP tasks**, but it can also be customized to any tasks.
 - This template supports **distributed-data-parallel(ddp)** and **automatic-mixed-precision(amp)** training.
